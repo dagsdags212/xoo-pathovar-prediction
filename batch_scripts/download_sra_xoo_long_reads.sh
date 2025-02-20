@@ -44,31 +44,25 @@ module load anaconda
 ## MAIN JOB. Run scripts here.
 conda activate sra_tools
 
-# Directory for storing raw long reads.
-OUTDIR=data/reads
-mkdir -p ${OUTDIR}
+main() {
+  # Directory for storing raw long reads.
+  OUTDIR=data/reads
+  mkdir -p ${OUTDIR}
 
-# Number of spots.
-N=1000
+  # Runinfo file.
+  RUNINFO=metadata/xoo_long_reads_runinfo.csv
 
-# Download all reads from a list of SRA accessions.
-fetch_reads() {
-  local file=$1
-  local target=$2
-  cat ${file} | parallel --progress --delay 2 "fastq-dump --origfmt -O ${target} {}"
+  # Exit if runinfo file does not exist.
+  [ -f "${RUNINFO} ]" || exit -1;
+  
+  # Create directory for each bioproject.
+  cat ${RUNINFO} | cut -d, -f8 | uniq | parallel --skip-first-line "mkdir -p ${OUTDIR}/{}"
+
+  # Group FASTQ files by bioproject accession.
+  cat ${RUNINFO} | parallel --colsep , --skip-first-line "fastq-dump --origfmt -O ${OUTDIR}/{8} {1}"  
 }
 
-# Iterate over all accession lists and download associated reads.
-for file in $(find metadata/accessions -type f)
-do
-  # Create directory for each bioproject.
-  root=$(basename ${file})
-  target=${OUTDIR}/${root%_*}
-  mkdir -p ${target}
-
-  # Download associated reads within bioproject directory.
-  fetch_reads ${file} ${target}
-done
+main
 
 ## Flush the TMPDIR.
 [ -d ${TMPDIR} ] && rm -rf ${TMPDIR} || echo "No tmp directory: ${TMPDIR}"
