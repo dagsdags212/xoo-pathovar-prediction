@@ -3,7 +3,7 @@
 #SBATCH --qos=240c-1h_batch
 #SBATCH --nodes=1
 #SBATCH --ntasks=8
-#SBATCH --mem=50G
+#SBATCH --mem=32G
 #SBATCH --job-name="download_xoo_ncbi_genomes"
 #SBATCH --output="%x.out"
 #SBATCH --requeue
@@ -47,46 +47,30 @@ module load anaconda
 # Activate conda environment.
 conda activate ncbi_datasets
 
-# Load secrets.
-source .env
+main() {  
+  mkdir -p data/
 
-# Flat file containing filtered assembly metadata.
-METADATA=metadata/assembly_metadata_filtered.tbl
+  # List of assembly ids.
+  ACC_LIST=metadata/asm_accessions.txt
 
-# Directory path for storing raw genomes.
-DATA_DIR=data/genomes
-mkdir -p ${DATA_DIR}
+  # Target file.
+  TARGET=data/xoo_assemblies.zip
 
-# Directory path containing links to all FASTA genomes for analysis.
-GENOME_DIR=data/xoo_genomes
-mkdir -p ${GENOME_DIR}
+  # Download reference FASTA and annotation for each assembly.
+  datasets download genome accession --inputfile ${ACC_LIST} --include genome,gff3 --filename ${TARGET}
 
-download_and_extract_asm() {
-  local asm=$1
-  local basename=${asm%.*}
-  local filename=${DATA_DIR}/${basename}.zip
-
-  # Download FASTA and GFF3 files.
-  datasets download genome accession ${asm} --include genome,gff3 --filename ${filename} --api-key ${NCBI_API_KEY}
-
-  # Decompress within the same directory.
-  unzip ${filename} -d ${DATA_DIR}/${basename}
-
-  # Create a symbolic link to GENOME_DIR.
-  local abspath=$(realpath ${DATA_DIR}/${basename}/ncbi_dataset/data/**/*.fna)
-  ln -fs ${abspath} ${GENOME_DIR}/${basename}.fna
+  # Unzip genome directory.
+  unzip ${TARGET} -d ${TARGET%.zip}
 }
 
-# Download and extract all assembly files in FASTA format.
-main() {
-  for asm in $(awk '{ print $2 }' ${METADATA})
-  do
-    download_and_extract_asm ${asm}
-  done
-}
-
-# Run script.
+# This must download a total of 81 Xoo assemblies.
 main
+
+# Verify count.
+fa_count=$(find ${TARGET%.zip} -type f -name "*fna" | wc -l)
+if [[ ${fa_count} -ne 81 ]]; then
+  echo "Error: only downloaded ${fa_count} files out of 81" > ${SLURM_JOB_NAME}.err
+fi
 
 ## Flush the TMPDIR.
 [ -d ${TMPDIR} ] && rm -rf ${TMPDIR} || echo "No tmp directory: ${TMPDIR}"
